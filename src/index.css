@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@theme {
+  --color-theme-bg: #E4E3E0;
+  --color-theme-ink: #141414;
+  --color-theme-line: #141414;
+  --color-theme-accent: #2A5DFF;
+
+  --font-theme-mono: 'Courier New', Courier, monospace;
+  --font-theme-sans: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-theme-serif: 'Georgia', serif;
+}
+
+body {
+  background-color: var(--color-theme-bg);
+  color: var(--color-theme-ink);
+  font-family: var(--font-theme-sans);
+}

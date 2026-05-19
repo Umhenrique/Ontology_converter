@@ -41,7 +41,9 @@ export default function App() {
 
       associations.forEach(a => {
         if (idToName[a.from] && idToName[a.to]) {
-          const propId = "Prop_" + a.id.replace(/[^a-zA-Z0-9_]/g, '_');
+          let baseName = safeId(a.name);
+          if (baseName === 'Entity') baseName = 'Property';
+          const propId = baseName + "_" + idToName[a.from] + "_" + idToName[a.to];
           owl += `    <owl:ObjectProperty rdf:about="#${propId}">\n`;
           owl += `        <rdfs:label xml:lang="en">${a.name}</rdfs:label>\n`;
           owl += `        <rdfs:domain rdf:resource="#${idToName[a.from]}"/>\n`;
@@ -52,7 +54,9 @@ export default function App() {
 
       attributes.forEach(attr => {
         if (idToName[attr.domain]) {
-          const propId = "DataProp_" + attr.id.replace(/[^a-zA-Z0-9_]/g, '_');
+          let baseName = safeId(attr.name);
+          if (baseName === 'Entity') baseName = 'DataProperty';
+          const propId = baseName + "_" + idToName[attr.domain];
           owl += `    <owl:DatatypeProperty rdf:about="#${propId}">\n`;
           owl += `        <rdfs:domain rdf:resource="#${idToName[attr.domain]}"/>\n`;
           owl += `        <rdfs:label xml:lang="en">${attr.name}</rdfs:label>\n`;
@@ -115,6 +119,29 @@ export default function App() {
           }))
           .filter((g: any) => g.from && g.to);
 
+        const viewToModel: Record<string, string> = {};
+        parsed.diagrams?.forEach((d: any) => {
+          d.contents?.forEach((c: any) => {
+            if (c.modelElement?.id) {
+              viewToModel[c.id] = c.modelElement.id;
+            }
+          });
+        });
+
+        const relationDirection: Record<string, { from: string, to: string }> = {};
+        parsed.diagrams?.forEach((d: any) => {
+          d.contents?.forEach((c: any) => {
+            if (c.type === 'RelationView' && c.modelElement?.id && c.source?.id && c.target?.id) {
+               const modelId = c.modelElement.id;
+               const fromModel = viewToModel[c.source.id];
+               const toModel = viewToModel[c.target.id];
+               if (fromModel && toModel) {
+                 relationDirection[modelId] = { from: fromModel, to: toModel };
+               }
+            }
+          });
+        });
+
         const associations = contents
           .filter((c: any) => c.type === 'Relation')
           .map((a: any) => {
@@ -125,12 +152,21 @@ export default function App() {
             if (!assocName.trim()) {
               assocName = "Property_" + a.id;
             }
+            
             const props = a.properties || [];
+            let fromId = props[0]?.propertyType?.id || '';
+            let toId = props[1]?.propertyType?.id || '';
+            
+            if (relationDirection[a.id]) {
+              fromId = relationDirection[a.id].from;
+              toId = relationDirection[a.id].to;
+            }
+
             return {
               id: a.id,
               name: assocName.trim(),
-              from: props[0]?.propertyType?.id || '',
-              to: props[1]?.propertyType?.id || ''
+              from: fromId,
+              to: toId
             };
           }).filter((a: any) => a.from && a.to);
 

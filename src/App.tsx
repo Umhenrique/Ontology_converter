@@ -41,11 +41,13 @@ export default function App() {
 
       associations.forEach(a => {
         if (idToName[a.from] && idToName[a.to]) {
-          let baseName = safeId(a.name);
-          if (baseName === 'Entity') baseName = 'Property';
-          const propId = baseName + "_" + idToName[a.from] + "_" + idToName[a.to];
+          const propId = "Prop_" + a.id.replace(/[^a-zA-Z0-9_]/g, '_');
           owl += `    <owl:ObjectProperty rdf:about="#${propId}">\n`;
-          owl += `        <rdfs:label xml:lang="en">${a.name}</rdfs:label>\n`;
+          let label = a.name.trim();
+          if (!label || label.startsWith('Property_') || label.startsWith('Prop_')) {
+             label = 'Relation';
+          }
+          owl += `        <rdfs:label xml:lang="en">${label}</rdfs:label>\n`;
           owl += `        <rdfs:domain rdf:resource="#${idToName[a.from]}"/>\n`;
           owl += `        <rdfs:range rdf:resource="#${idToName[a.to]}"/>\n`;
           owl += `    </owl:ObjectProperty>\n\n`;
@@ -54,14 +56,32 @@ export default function App() {
 
       attributes.forEach(attr => {
         if (idToName[attr.domain]) {
-          let baseName = safeId(attr.name);
-          if (baseName === 'Entity') baseName = 'DataProperty';
-          const propId = baseName + "_" + idToName[attr.domain];
+          const propId = "DataProp_" + attr.id.replace(/[^a-zA-Z0-9_]/g, '_');
           owl += `    <owl:DatatypeProperty rdf:about="#${propId}">\n`;
           owl += `        <rdfs:domain rdf:resource="#${idToName[attr.domain]}"/>\n`;
           owl += `        <rdfs:label xml:lang="en">${attr.name}</rdfs:label>\n`;
           owl += `    </owl:DatatypeProperty>\n\n`;
         }
+      });
+
+      const classToSupers: Record<string, string[]> = {};
+      generalizations.forEach(g => {
+        if (!classToSupers[g.to]) classToSupers[g.to] = [];
+        classToSupers[g.to].push(g.from);
+      });
+
+      const phases = classes.filter(c => c.stereotype?.toLowerCase() === 'phase');
+      const disjointAxioms: Record<string, Set<string>> = {};
+      
+      phases.forEach(p => {
+         const supers = classToSupers[p.id] || [];
+         supers.forEach(sup => {
+            const siblings = phases.filter(op => op.id !== p.id && (classToSupers[op.id] || []).includes(sup));
+            siblings.forEach(s => {
+               if (!disjointAxioms[p.id]) disjointAxioms[p.id] = new Set();
+               disjointAxioms[p.id].add(s.id);
+            });
+         });
       });
 
       classes.forEach(c => {
@@ -74,6 +94,14 @@ export default function App() {
             owl += `        <rdfs:subClassOf rdf:resource="#${idToName[g.from]}"/>\n`;
           }
         });
+
+        if (disjointAxioms[c.id]) {
+          disjointAxioms[c.id].forEach(disjointId => {
+             if (idToName[disjointId]) {
+                 owl += `        <owl:disjointWith rdf:resource="#${idToName[disjointId]}"/>\n`;
+             }
+          });
+        }
 
         owl += `        <rdfs:label xml:lang="en">${c.name}</rdfs:label>\n`;
         owl += `    </owl:Class>\n\n`;
@@ -106,7 +134,8 @@ export default function App() {
           .filter((c: any) => c.type === 'Class')
           .map((c: any) => ({
             id: c.id,
-            name: (c.name || '').trim()
+            name: (c.name || '').trim(),
+            stereotype: c.stereotype || ''
           }))
           .filter((c: any) => c.id && c.name);
 
@@ -196,10 +225,15 @@ export default function App() {
           throw new Error("Invalid XML file structure. Not a valid XML document.");
         }
 
-        const classes = Array.from(xmlDoc.querySelectorAll("Models Class")).map((c: Element) => ({
-          id: c.getAttribute("Id") || '',
-          name: (c.getAttribute("Name") || '').trim()
-        })).filter(c => c.id && c.name);
+        const classes = Array.from(xmlDoc.querySelectorAll("Models Class")).map((c: Element) => {
+          const stereotypes = c.getElementsByTagName("Stereotype");
+          const stereotype = stereotypes.length > 0 ? stereotypes[0].getAttribute("Name") : '';
+          return {
+            id: c.getAttribute("Id") || '',
+            name: (c.getAttribute("Name") || '').trim(),
+            stereotype: stereotype || ''
+          }
+        }).filter(c => c.id && c.name);
 
         const generalizations = Array.from(xmlDoc.querySelectorAll("Models Generalization")).map((g: Element) => ({
           id: g.getAttribute("Id") || '',
